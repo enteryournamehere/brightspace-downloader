@@ -1,4 +1,12 @@
-import argparse
+"""OAuth2 + PKCE against auth.brightspace.com, plus domain/tenant discovery.
+
+Public surface:
+  ensure_token(cfg) - guarantees cfg['domain'] is set, then returns a valid
+                       access token (refreshed or obtained interactively).
+
+The access token is cached on disk per-tenant at
+~/.cache/brightspace_downloader/<tenantId>.json.
+"""
 import base64
 import hashlib
 import json
@@ -12,49 +20,28 @@ from pathlib import Path
 
 import requests
 
+import config
+
 LANDLORD = "https://landlord.brightspace.com/v1/tenants"
 INSTITUTION_SEARCH = "https://lms-disco.api.brightspace.com/institutions"
 AUTH_HOST = "https://auth.brightspace.com"
 AUTHORIZE = f"{AUTH_HOST}/oauth2/auth"
 TOKEN = f"{AUTH_HOST}/core/connect/token"
-GRAPHQL_ENDPOINT = "https://usergraph.api.brightspace.com/graphql"
 
 OAUTH_CLIENT_ID = "73b7099f-d148-46f7-95cc-4b957cdf0f75"
 OAUTH_REDIRECT = "brightspacepulse://auth"
-OAUTH_SCOPE = "core:*:*"
+OAUTH_SCOPE = "core:*:* content:topics:read content:file:read"
 
-ENROLLMENT_QUERY = """
-query EnrollmentPage($id: String) {
-  enrollmentPage(id: $id) {
-    enrollments {
-      id
-      pinned
-      startDate
-      endDate
-      organization {
-        id
-        name
-        code
-        homeUrl
-        isActive
-        semester { name }
-      }
-    }
-    next
-  }
-}
-"""
-
-CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "brightspace_pulse_poc"
+CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "brightspace_downloader"
 
 
-def b64url(b):
+def _b64url(b):
     return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
 
 
-def pkce_pair():
-    verifier = b64url(secrets.token_bytes(32))
-    challenge = b64url(hashlib.sha256(verifier.encode()).digest())
+def _pkce_pair():
+    verifier = _b64url(secrets.token_bytes(32))
+    challenge = _b64url(hashlib.sha256(verifier.encode()).digest())
     return verifier, challenge
 
 
@@ -76,8 +63,8 @@ def search_institutions(query):
 
 
 def choose_domain():
-    """Prompt the user for a Brightspace domain with live-search autocomplete
-    against the institution discovery API. Falls back to plain input() if
+    """Prompt for a Brightspace domain with live-search autocomplete against
+    the institution discovery API. Falls back to plain input() if
     prompt_toolkit is unavailable."""
     try:
         from prompt_toolkit import PromptSession
@@ -118,19 +105,19 @@ def discover_tenant(domain):
     return data[0]["tenantId"]
 
 
-def load_cached_token(tenant_id):
+def _load_cached_token(tenant_id):
     path = CACHE_DIR / f"{tenant_id}.json"
     if not path.exists():
         return None
     return json.loads(path.read_text())
 
 
-def save_cached_token(tenant_id, tok):
+def _save_cached_token(tenant_id, tok):
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     (CACHE_DIR / f"{tenant_id}.json").write_text(json.dumps(tok))
 
 
-def gui_capture_redirect(url, redirect_prefix):
+def _gui_capture_redirect(url, redirect_prefix):
     """Open an embedded Qt webview and return the first URL beginning with
     redirect_prefix. Returns None if PyQt6 is not installed."""
     try:
@@ -185,11 +172,13 @@ def gui_capture_redirect(url, redirect_prefix):
     return captured.get("url")
 
 
-def paste_capture_redirect(url):
-    print("\nNOTICE: PyQt6 is not installed. The login process is much easier if you install it.")
-    print("\nManual login:Open this URL, log in, and when the browser tries to open")
+def _paste_capture_redirect(url):
+    print("\WARNING: PyQt6 is not installed. The login process is MUCH easier if you install it.")
+    print("\nManual login: open this URL, log in, and when the browser tries to open")
     print(f"'{OAUTH_REDIRECT}?...', copy that full URL from the address bar")
-    print("and paste it below.\n")
+    print("and paste it below. You'll probably need to open Dev Tools and find the URL")
+    print("in the network logs, as it probably won't appear in the address bar.")
+    print()
     print(url)
     print()
     try:
@@ -199,8 +188,8 @@ def paste_capture_redirect(url):
     return input("Paste redirect URL: ").strip()
 
 
-def interactive_auth(tenant_id):
-    verifier, challenge = pkce_pair()
+def _interactive_auth(tenant_id):
+    verifier, challenge = _pkce_pair()
     state = secrets.token_urlsafe(16)
     params = {
         "response_type": "code",
@@ -214,7 +203,7 @@ def interactive_auth(tenant_id):
     }
     url = f"{AUTHORIZE}?{urllib.parse.urlencode(params)}"
 
-    pasted = gui_capture_redirect(url, OAUTH_REDIRECT) or paste_capture_redirect(url)
+    pasted = _gui_capture_redirect(url, OAUTH_REDIRECT) or _paste_capture_redirect(url)
 
     q = urllib.parse.parse_qs(urllib.parse.urlparse(pasted).query)
     if q.get("state", [None])[0] != state:
@@ -237,7 +226,7 @@ def interactive_auth(tenant_id):
     return tok
 
 
-def refresh_token(tok):
+def _refresh(tok):
     r = requests.post(TOKEN, data={
         "grant_type": "refresh_token",
         "client_id": OAUTH_CLIENT_ID,
@@ -252,75 +241,29 @@ def refresh_token(tok):
 
 
 def get_access_token(tenant_id):
-    tok = load_cached_token(tenant_id)
+    tok = _load_cached_token(tenant_id)
     if tok:
         age = time.time() - tok.get("_obtained_at", 0)
         if age < tok.get("expires_in", 0) - 60:
             return tok["access_token"]
-        refreshed = refresh_token(tok)
+        refreshed = _refresh(tok)
         if refreshed:
-            save_cached_token(tenant_id, refreshed)
+            _save_cached_token(tenant_id, refreshed)
             return refreshed["access_token"]
-    tok = interactive_auth(tenant_id)
-    save_cached_token(tenant_id, tok)
+    tok = _interactive_auth(tenant_id)
+    _save_cached_token(tenant_id, tok)
     return tok["access_token"]
 
 
-def list_courses(access_token):
-    enrollments = []
-    next_id = None
-    while True:
-        r = requests.post(
-            GRAPHQL_ENDPOINT,
-            json={"query": ENROLLMENT_QUERY, "variables": {"id": next_id}},
-            headers={"Authorization": f"Bearer {access_token}"},
-            timeout=15,
-        )
-        if r.status_code != 200:
-            sys.exit(f"GraphQL failed: {r.status_code} {r.text[:500]}")
-        body = r.json()
-        if "errors" in body:
-            sys.exit(f"GraphQL errors: {body['errors']}")
-        page = body["data"]["enrollmentPage"]
-        enrollments.extend(page["enrollments"])
-        next_id = page.get("next")
-        if not next_id:
-            break
-    return enrollments
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--domain",
-                    help="Brightspace site domain, e.g. brightspace.tudelft.nl. "
-                         "If omitted, you'll be prompted with live search.")
-    ap.add_argument("--logout", action="store_true",
-                    help="Delete cached token and re-authenticate")
-    args = ap.parse_args()
-
-    domain = args.domain or choose_domain()
+def ensure_token(cfg):
+    """Prompt for a domain if missing, then return a valid access token.
+    Mutates and persists cfg on first-run domain entry."""
+    domain = cfg.get("domain")
     if not domain:
-        sys.exit("No domain provided.")
-
+        domain = choose_domain()
+        if not domain:
+            sys.exit("No domain provided.")
+        cfg["domain"] = domain
+        config.save(cfg)
     tenant_id = discover_tenant(domain)
-    print(f"tenantId: {tenant_id}")
-
-    if args.logout:
-        p = CACHE_DIR / f"{tenant_id}.json"
-        if p.exists():
-            p.unlink()
-        print("Cached token cleared.")
-
-    token = get_access_token(tenant_id)
-    enrollments = list_courses(token)
-
-    print(f"\n{len(enrollments)} enrollments:\n")
-    print(f"{'ORG_UNIT_ID':>12}  Pinned?  Name")
-    for e in enrollments:
-        org_id = e["organization"]["id"].rsplit("/", 1)[-1]
-        pin = "📌" if e.get("pinned") else "  "
-        print(f"{org_id:>12}  {pin}       {e['organization']['name']}")
-
-
-if __name__ == "__main__":
-    main()
+    return get_access_token(tenant_id)
