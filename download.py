@@ -54,6 +54,17 @@ def walk_course(token, course_id, include_course, modules, topics):
         yield from walk(token, m, [], include_course, set(modules), set(topics))
 
 
+def _shortcut_url(meta, domain, topic):
+    """Best URL to point a .url shortcut at for non-file topics."""
+    url = meta.get("Url") or ""
+    if url.startswith("http"):
+        return url
+    if url.startswith("/"):
+        return f"https://{domain}{url}"
+    # d2l: scheme (videos) or empty: fall back to the Brightspace view page
+    return topic.get("viewHref") or f"https://{domain}/"
+
+
 def download_topic(token, domain, topic, dest_dir):
     ou_id, topic_id = _parse_topic_url(topic["id"])
     base = f"https://{domain}/d2l/api/le/1.40/{ou_id}/content/topics/{topic_id}"
@@ -62,13 +73,14 @@ def download_topic(token, domain, topic, dest_dir):
     if meta_r.status_code != 200:
         return "err", f"metadata {meta_r.status_code}"
     meta = meta_r.json()
-    ttype = meta.get("TypeIdentifier")
+    # TopicType: 1=File, 3=Link, 11=Video (and others). Only 1 has /file bytes.
+    topic_type = meta.get("TopicType")
     title = sanitize(meta.get("Title") or topic["title"] or "topic")
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    if ttype == "Link":
+    if topic_type != 1:
         path = dest_dir / f"{title}.url"
-        path.write_text(f"[InternetShortcut]\nURL={meta.get('Url', '')}\n")
+        path.write_text(f"[InternetShortcut]\nURL={_shortcut_url(meta, domain, topic)}\n")
         return "link", path.name
 
     with requests.get(f"{base}/file",
