@@ -48,10 +48,10 @@ def walk(token, module, path, under_marked, modules, topics):
             yield here, c
 
 
-def walk_course(token, course_id, modules, topics):
+def walk_course(token, course_id, include_course, modules, topics):
     roots = gql(token, ROOT_QUERY, {"id": course_id})["contentRoot"]["modules"]
     for m in roots:
-        yield from walk(token, m, [], False, set(modules), set(topics))
+        yield from walk(token, m, [], include_course, set(modules), set(topics))
 
 
 def download_topic(token, domain, topic, dest_dir):
@@ -116,7 +116,13 @@ def run(token, cfg, root):
         print(f"\n=== {course_name} ===")
 
         t = config.normalize_targets(raw)
-        for path_parts, topic in walk_course(token, course_id, t["modules"], t["topics"]):
+        for path_parts, topic in walk_course(
+            token,
+            course_id,
+            t["course"],
+            t["modules"],
+            t["topics"],
+        ):
             dest = course_dir.joinpath(*path_parts)
             status, name = download_topic(token, domain, topic, dest)
             counts[status] += 1

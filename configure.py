@@ -118,17 +118,23 @@ class CourseTree(Screen):
         yield Header()
         self._tree = Tree(f"{self.course['name']}", id="tree")
         self._tree.show_root = True
+        self._tree.root.data = {
+            "type": "course",
+            "id": self.course["id"],
+            "title": self.course["name"],
+        }
+        self._tree.root.label = self._label_course(self.course)
         self._tree.root.expand()
         yield self._tree
         yield Footer()
 
     def _targets(self):
         t = self.app.config.setdefault("download_targets", {})
-        entry = t.setdefault(self.course["id"], {"modules": [], "topics": []})
-        if isinstance(entry, list):
-            entry = {"modules": entry, "topics": []}
-            t[self.course["id"]] = entry
-        return entry
+        return t.setdefault(self.course["id"], {"course": False, "modules": [], "topics": []})
+
+    @property
+    def course_marked(self):
+        return bool(self._targets().get("course"))
 
     @property
     def download_set(self):
@@ -137,6 +143,10 @@ class CourseTree(Screen):
 
     def persist_download(self, kind, id_, add):
         e = self._targets()
+        if kind == "course":
+            e["course"] = add
+            config.save(self.app.config)
+            return
         key = "modules" if kind == "module" else "topics"
         ids = set(e[key])
         ids.add(id_) if add else ids.discard(id_)
@@ -148,7 +158,15 @@ class CourseTree(Screen):
         self.load_root()
 
     def _mark(self, id_):
+        if self.course_marked:
+            return "[green]■[/green] "
         return "[green]■[/green] " if id_ in self.download_set else "  "
+
+    def _mark_course(self):
+        return "[green]■[/green] " if self.course_marked else "  "
+
+    def _label_course(self, c):
+        return f"{self._mark_course()}📚 {c['name']}"
 
     def _label_module(self, m):
         return f"{self._mark(m['id'])}📁 {m['title']}"
@@ -200,13 +218,31 @@ class CourseTree(Screen):
         for c in children:
             self._add_child(node, c)
 
+    def _refresh_marks(self, node):
+        d = node.data or {}
+        kind = d.get("type")
+        if kind == "course":
+            node.label = self._label_course({"name": d["title"]})
+        elif kind == "module":
+            node.label = self._label_module({"id": d["id"], "title": d["title"]})
+        elif kind == "topic":
+            node.label = self._label_topic({"id": d["id"], "title": d["title"]})
+        for child in node.children:
+            self._refresh_marks(child)
+
     def action_toggle_download(self):
         node = self._tree.cursor_node
         if not node or not node.data:
             return
         kind = node.data.get("type")
-        if kind not in ("module", "topic"):
+        if kind not in ("course", "module", "topic"):
             return
+        if kind == "course":
+            add = not self.course_marked
+            self.persist_download("course", self.course["id"], add)
+            self._refresh_marks(self._tree.root)
+            return
+
         nid = node.data["id"]
         add = nid not in self.download_set
         self.persist_download(kind, nid, add)

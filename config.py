@@ -17,14 +17,16 @@ def save(cfg):
 
 
 def normalize_targets(raw):
-    """Accept both the new {modules, topics} form and the legacy flat list."""
-    if isinstance(raw, list):
-        return {"modules": raw, "topics": []}
-    return {"modules": raw.get("modules", []), "topics": raw.get("topics", [])}
+    """Normalize target entries to the expected {course, modules, topics} shape."""
+    return {
+        "course": raw.get("course", False),
+        "modules": raw.get("modules", []),
+        "topics": raw.get("topics", []),
+    }
 
 
 def all_targets(cfg):
-    return cfg.get("download_targets") or cfg.get("sync_targets") or {}
+    return cfg.get("download_targets") or {}
 
 
 def summary(cfg):
@@ -32,7 +34,7 @@ def summary(cfg):
     courses = modules = topics = 0
     for raw in all_targets(cfg).values():
         n = normalize_targets(raw)
-        if n["modules"] or n["topics"]:
+        if n["course"] or n["modules"] or n["topics"]:
             courses += 1
         modules += len(n["modules"])
         topics += len(n["topics"])
