@@ -13,6 +13,9 @@ separately under ~/.cache/brightspace_downloader/.
 import sys
 from pathlib import Path
 
+from prompt_toolkit import prompt
+from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.key_binding import KeyBindings
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -252,12 +255,45 @@ def _download(cfg):
     input("\nPress enter to return to menu...")
 
 
+def _menu_choice() -> str:
+    kb = KeyBindings()
+
+    @kb.add("e")
+    @kb.add("E")
+    def _choose_edit(event):
+        event.app.exit(result="e")
+
+    @kb.add("d")
+    @kb.add("D")
+    def _choose_download(event):
+        event.app.exit(result="d")
+
+    @kb.add("q")
+    @kb.add("Q")
+    def _choose_quit(event):
+        event.app.exit(result="q")
+
+    @kb.add("enter")
+    def _choose_enter(event):
+        event.app.exit(result="q")
+
+    return prompt(
+        HTML(
+            "<ansigreen>[e]</ansigreen>dit selection  "
+            "<ansiyellow>[d]</ansiyellow>ownload  "
+            "<ansired>[q]</ansired>uit > "
+        ),
+        key_bindings=kb,
+        mouse_support=False,
+    ).strip().lower()
+
+
 def main():
     cfg = config.load()
     while True:
         print("\n=== Brightspace downloader ===")
         _print_status(cfg)
-        choice = input("[e]dit selection  [d]ownload  [q]uit > ").strip().lower()
+        choice = _menu_choice()
         if choice == "e":
             _edit(cfg)
             cfg = config.load()
