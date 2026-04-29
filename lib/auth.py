@@ -20,7 +20,7 @@ from pathlib import Path
 
 import requests
 
-import config
+from lib import config
 
 LANDLORD = "https://landlord.brightspace.com/v1/tenants"
 INSTITUTION_SEARCH = "https://lms-disco.api.brightspace.com/institutions"

@@ -69,11 +69,11 @@ Deleting the cache file forces a fresh login.
 |-----------------|-------------------------------------------------------------------|
 | `configure.py`  | Main entry point: menu + Textual TUI for picking what to download |
 | `download.py`   | Walks marked folders, downloads files, also runnable standalone   |
-| `auth.py`       | OAuth2 + PKCE login, tenant discovery, token cache                |
-| `graphql.py`    | Brightspace Pulse GraphQL client and queries                      |
-| `config.py`     | Config load/save and target normalisation                         |
-| `GRAPHQL.md`    | Reference for the Pulse GraphQL schema (as observed)              |
-| `VALENCE.md`    | Notes on the tenant's Valence REST API (what Pulse falls back to) |
+| `lib/auth.py`       | OAuth2 + PKCE login, tenant discovery, token cache                |
+| `lib/graphql.py`    | Brightspace Pulse GraphQL client and queries                      |
+| `lib/config.py`     | Config load/save and target normalisation                         |
+| `documentation/GRAPHQL.md`    | Reference for the Pulse GraphQL schema (as observed)              |
+| `documentation/VALENCE.md`    | Notes on the tenant's Valence REST API (what Pulse falls back to) |
 
 ---
 

@@ -22,10 +22,9 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Tree as _Tree
 
-import auth
-import config
+from lib import auth, config
 import download
-from graphql import CONTENT_ITEM_FRAGMENT, MODULE_QUERY, ROOT_QUERY, fetch_courses, gql
+from lib.graphql import MODULE_QUERY, ROOT_QUERY, fetch_courses, gql
 
 
 class Tree(_Tree):

@@ -15,9 +15,8 @@ from urllib.parse import unquote, urlparse
 
 import requests
 
-import auth
-import config
-from graphql import MODULE_QUERY, ROOT_QUERY, fetch_courses, gql
+from lib import auth, config
+from lib.graphql import MODULE_QUERY, ROOT_QUERY, fetch_courses, gql
 
 
 INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
