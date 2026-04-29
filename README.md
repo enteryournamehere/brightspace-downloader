@@ -1,12 +1,13 @@
 # Universal Brightspace Downloader
 
-Terminal tool to download course files from any Brightspace / D2L Learning Environment. Download your lectures, slides, PDFs, and other course files to your local machine. Pick the folders and files you care about using the interactive terminal interface, then run `download.py` to update your local copy.
+Terminal tool to download course files from any Brightspace / D2L Learning Environment. Download your lectures, slides, PDFs, and other course files to your local machine. You can pick the folders and files you care about using an interactive terminal interface, then (re)run `download.py` at any point to update your local copy.
 
-_Should_ work against any Brightspace instance, but I've only been able to test it against TU Delft. If you try it for another institution, please open an issue to tell me whether it works, and, in case it doesn't, what errors you get.
+_Should_ work against any Brightspace instance, but I've only been able to test it against TU Delft. If you try it for another institution, please open an issue to let me know whether it works, and, in case it doesn't, what errors you get.
 
 This tool authenticates as the **Brightspace Pulse** mobile app using OAuth2 + PKCE, so login goes through your institution's normal SSO flow.
 
-Largly built using Claude Code. I have not thoroughly manually verified the documentation it generated for the GraphQL and Valence APIs, but the tool works, and that was the main goal here. So if you find any inaccuracies in the docs feel free to open an issue or PR.
+> [!NOTE]
+> Note: Largly built using Claude Code. I have not thoroughly manually verified the documentation it generated for the GraphQL and Valence APIs, but the tool works, and that was the main goal here. So if you find any inaccuracies in the docs feel free to open an issue or PR.
 
 ---
 
@@ -39,18 +40,9 @@ You can also run the downloader directly:
 python3 download.py --out ~/Courses
 ```
 
-## Files written
-
-```
-<out>/
-  <Course Name>/
-    <Module>/<Submodule>/<file.pdf>
-    <Module>/<Link Topic>.url
-```
-
-Filenames are sanitised (`<>:"/\|?*` and control chars replaced with `_`).
-
 ## Configuration
+
+The tool stores its data in two places:
 
 - **Domain + marked items**: `~/.config/brightspace_downloader/config.json`
 - **Access/refresh token** (per tenant): `~/.cache/brightspace_downloader/<tenantId>.json`
@@ -59,9 +51,8 @@ Deleting the cache file forces a fresh login.
 
 ## Requirements
 
-- Python 3.9+
 - `requests`, `textual`, `prompt_toolkit`
-- `PyQt6` + `PyQt6-WebEngine` *(optional but highly recommended)* for the embedded login window. Without PyQt6 you'll be asked to paste the redirect URL from a normal browser; everything still works.
+- `PyQt6` + `PyQt6-WebEngine` *(optional but highly recommended)* for the embedded login window. Without PyQt6 you'll be asked to paste the redirect URL from a normal browser.
 
 ## Project layout
 
@@ -107,13 +98,11 @@ This tool authenticates as the Pulse mobile app:
 | Scope          | `core:*:* content:topics:read content:file:read`               |
 | Extra param    | `tenant_id=<tenantId>` on `/oauth2/auth`                       |
 
-D2L scopes follow the format `service:resource:action`. `core:*:*` alone is enough for GraphQL; the two `content:*` scopes are only required for the Valence file-download endpoint (without them it returns 403 *Insufficient scope*).
-
 ## Login flow
 
 1. Resolve the user's Brightspace domain to a `tenant_id` via `landlord.brightspace.com`.
 2. Build an authorize URL with PKCE and the `tenant_id` query parameter.
-3. An embedded Qt `WebEngineView` loads it; the user completes SSO at their institution. The final 302 points at `brightspacepulse://auth?code=...`, caught via a registered custom URL scheme handler. *(Chromium blocks the `https → custom-scheme` redirect as mixed content unless the scheme is registered with `SecureScheme` before `QApplication` is constructed.)*
+3. An embedded Qt `WebEngineView` loads it; the user completes SSO at their institution. The final 302 points at `brightspacepulse://auth?code=...`, caught via a registered custom URL scheme handler.
 4. Exchange the code for an access token + refresh token at `/core/connect/token`.
 5. Cache the tokens; refresh silently on the next run.
 
@@ -149,7 +138,7 @@ Topic ids from GraphQL embed both `ouId` and `topicId` in the URL path, so no ex
 
 Re-runs are idempotent: if the local file's size already matches the `Content-Length`, the download is skipped.
 
-## Related reading
+## Further documentation
 
 - [GRAPHQL.md](GRAPHQL.md): observed Pulse GraphQL schema and queries.
 - [VALENCE.md](VALENCE.md): Valence REST endpoints that work with a Pulse-scoped token (and which ones 403).
