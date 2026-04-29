@@ -7,7 +7,7 @@ _Should_ work against any Brightspace instance, but I've only been able to test 
 This tool authenticates as the **Brightspace Pulse** mobile app using OAuth2 + PKCE, so login goes through your institution's normal SSO flow.
 
 > [!NOTE]
-> Note: Largly built using Claude Code. I have not thoroughly manually verified the documentation it generated for the GraphQL and Valence APIs, but the tool works, and that was the main goal here. So if you find any inaccuracies in the docs feel free to open an issue or PR.
+> Largly built using Claude Code. I have not thoroughly manually verified the documentation it generated for the GraphQL and Valence APIs, but the tool works, and that was the main goal here. So if you find any inaccuracies in the docs feel free to open an issue or PR.
 
 ---
 
