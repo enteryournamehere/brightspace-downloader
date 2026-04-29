@@ -173,7 +173,7 @@ def _gui_capture_redirect(url, redirect_prefix):
 
 
 def _paste_capture_redirect(url):
-    print("\WARNING: PyQt6 is not installed. The login process is MUCH easier if you install it.")
+    print("\nWARNING: PyQt6 is not installed. The login process is MUCH easier if you install it.")
     print("\nManual login: open this URL, log in, and when the browser tries to open")
     print(f"'{OAUTH_REDIRECT}?...', copy that full URL from the address bar")
     print("and paste it below. You'll probably need to open Dev Tools and find the URL")
