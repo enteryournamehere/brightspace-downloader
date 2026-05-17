@@ -26,6 +26,10 @@ from lib import auth, config
 import download
 from lib.graphql import MODULE_QUERY, ROOT_QUERY, fetch_courses, gql
 
+MARK_FULL    = "[#22c55e]■[/#22c55e] "
+MARK_PARTIAL = "[#f97316]■[/#f97316] "
+MARK_NONE    = "  "
+
 
 class Tree(_Tree):
     BINDINGS = [
@@ -76,12 +80,23 @@ class CourseList(Screen):
     def refresh_list(self):
         lv = self.query_one("#courses", ListView)
         lv.clear()
+        targets = self.app.config.get("download_targets", {})
         for c in self.filtered:
             pin = "★ " if c["pinned"] else "  "
             dim = "" if c["active"] else " [dim](inactive)[/dim]"
-            lv.append(ListItem(Label(f"{pin}{c['num']:>7}  {c['name']}{dim}", markup=True)))
+            t = targets.get(c["id"], {})
+            if t.get("course"):
+                indicator = MARK_FULL
+            elif t.get("modules") or t.get("topics"):
+                indicator = MARK_PARTIAL
+            else:
+                indicator = MARK_NONE
+            lv.append(ListItem(Label(f"{indicator}{pin}{c['num']:>7}  {c['name']}{dim}", markup=True)))
         if self.filtered:
             lv.index = 0
+
+    def on_screen_resume(self):
+        self.refresh_list()
 
     def on_input_changed(self, event: Input.Changed):
         q = event.value.lower()
@@ -129,7 +144,12 @@ class CourseTree(Screen):
 
     def _targets(self):
         t = self.app.config.setdefault("download_targets", {})
-        return t.setdefault(self.course["id"], {"course": False, "modules": [], "topics": []})
+        entry = t.setdefault(self.course["id"], {})
+        entry.setdefault("course", False)
+        entry.setdefault("modules", [])
+        entry.setdefault("topics", [])
+        entry.setdefault("module_children", {})
+        return entry
 
     @property
     def course_marked(self):
@@ -156,22 +176,48 @@ class CourseTree(Screen):
         self._tree.focus()
         self.load_root()
 
-    def _mark(self, id_):
-        if self.course_marked:
-            return "[green]■[/green] "
-        return "[green]■[/green] " if id_ in self.download_set else "  "
+    def _record_children(self, parent_id, children):
+        mc = self._targets()["module_children"]
+        mc[parent_id] = [c["id"] for c in children]
+        config.save(self.app.config)
+
+    def _has_marked_descendant(self, module_id):
+        children = self._targets()["module_children"].get(module_id, [])
+        for cid in children:
+            if cid in self.download_set:
+                return True
+            if self._has_marked_descendant(cid):
+                return True
+        return False
 
     def _mark_course(self):
-        return "[green]■[/green] " if self.course_marked else "  "
+        if self.course_marked:
+            return MARK_FULL
+        t = self._targets()
+        if t["modules"] or t["topics"]:
+            return MARK_PARTIAL
+        return MARK_NONE
+
+    def _mark_module(self, id_):
+        if self.course_marked or id_ in self.download_set:
+            return MARK_FULL
+        if self._has_marked_descendant(id_):
+            return MARK_PARTIAL
+        return MARK_NONE
+
+    def _mark_topic(self, id_):
+        if self.course_marked or id_ in self.download_set:
+            return MARK_FULL
+        return MARK_NONE
 
     def _label_course(self, c):
         return f"{self._mark_course()}📚 {c['name']}"
 
     def _label_module(self, m):
-        return f"{self._mark(m['id'])}📁 {m['title']}"
+        return f"{self._mark_module(m['id'])}📁 {m['title']}"
 
     def _label_topic(self, t):
-        return f"{self._mark(t['id'])}📄 {t['title']}"
+        return f"{self._mark_topic(t['id'])}📄 {t['title']}"
 
     def _add_child(self, parent, c):
         if c["__typename"] == "ContentModule":
@@ -191,6 +237,7 @@ class CourseTree(Screen):
 
     def _populate_root(self, modules):
         for m in modules:
+            self._record_children(m["id"], m["children"])
             node = self._tree.root.add(
                 self._label_module(m),
                 data={"type": "module", "id": m["id"],
@@ -198,6 +245,7 @@ class CourseTree(Screen):
             for c in m["children"]:
                 self._add_child(node, c)
         self._tree.root.expand()
+        self._refresh_marks(self._tree.root)
 
     def on_tree_node_expanded(self, event):
         node = event.node
@@ -214,8 +262,10 @@ class CourseTree(Screen):
                                   data["contentModule"]["children"])
 
     def _populate_children(self, node, children):
+        self._record_children(node.data["id"], children)
         for c in children:
             self._add_child(node, c)
+        self._refresh_marks(self._tree.root)
 
     def _refresh_marks(self, node):
         d = node.data or {}
@@ -245,8 +295,7 @@ class CourseTree(Screen):
         nid = node.data["id"]
         add = nid not in self.download_set
         self.persist_download(kind, nid, add)
-        item = {"id": nid, "title": node.data["title"]}
-        node.label = self._label_module(item) if kind == "module" else self._label_topic(item)
+        self._refresh_marks(self._tree.root)
 
 
 class TuiApp(App):
